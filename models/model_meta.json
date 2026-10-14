@@ -1,0 +1,22 @@
+{
+  "trained_at": "2026-10-02T06:55:59+00:00",
+  "model": "TF-IDF (1-2 grams, min_df=2) + LogisticRegression(balanced)",
+  "seed": 42,
+  "sklearn_version": "1.9.1",
+  "python_version": "3.12.3",
+  "raw_data_sha256_12": "3bcd198eff34",
+  "train_size": 804,
+  "test_size": 202,
+  "train_date_range": [
+    "2023-08-24 13:19:08+00:00",
+    "2025-11-10 11:02:29+00:00"
+  ],
+  "test_accuracy": 0.866,
+  "test_macro_f1": 0.863,
+  "test_recall": {
+    "bug": 0.859,
+    "documentation": 0.975,
+    "feature request": 1.0,
+    "other": 0.692
+  }
+}
