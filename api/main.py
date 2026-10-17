@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -8,10 +9,12 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-from textprep import build_text  # noqa: E402
+
+from textprep import build_text  
 
 MODEL_PATH = ROOT / "models" / "model.joblib"
-REVIEW_THRESHOLD = 0.5   # placeholder, not yet validated (see notes below)
+
+REVIEW_THRESHOLD = float(os.environ.get("REVIEW_THRESHOLD", "0.5"))
 
 app = FastAPI(title="Issue triage classifier")
 _model = None
@@ -65,10 +68,11 @@ PAGE = r"""<!doctype html>
  input,textarea{width:100%;box-sizing:border-box;font:inherit;padding:.5rem;margin:.25rem 0 .75rem}
  textarea{height:11rem}
  button{font:inherit;padding:.5rem 1rem;margin:0 .5rem .5rem 0;cursor:pointer}
- .bar{background:#eee;border-radius:4px;margin:.25rem 0}
- .bar div{background:#4c7;height:1.3rem;border-radius:4px;color:#fff;font-size:.8rem;
-          padding-left:.4rem;white-space:nowrap;box-sizing:border-box}
+ .bar{position:relative;background:#eee;border-radius:4px;margin:.25rem 0;height:1.4rem;overflow:hidden}
+ .bar .fill{background:#8c9;height:100%}
+ .bar .lbl{position:absolute;left:.4rem;top:0;line-height:1.4rem;font-size:.85rem;white-space:nowrap}
  .warn{color:#a60}
+ .err{color:#b00}
  small{color:#666}
 </style></head><body>
 <h1>Issue triage demo</h1>
@@ -95,13 +99,31 @@ const EX = {
  ci: ["Wheel builds failing on Linux nightly",
        "The nightly wheel build job has been failing since yesterday, probably a change in the build image."]
 };
-function fill(k){ title.value = EX[k][0]; body.value = EX[k][1]; run(); }
+const titleEl = document.getElementById('title');
+const bodyEl = document.getElementById('body');
+const out = document.getElementById('out');
+
+function fill(k){ titleEl.value = EX[k][0]; bodyEl.value = EX[k][1]; run(); }
+
+function showError(msg){
+  out.replaceChildren();
+  const p = document.createElement('p'); p.className = 'err'; p.textContent = msg;
+  out.appendChild(p);
+}
+
 async function run(){
-  const out = document.getElementById('out');
   out.textContent = 'Working...';
-  const r = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({title: title.value, body: body.value})});
-  if(!r.ok){ out.textContent = 'Error ' + r.status + (r.status === 422 ? ': a title is required' : ''); return; }
+  let r;
+  try {
+    r = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({title: titleEl.value, body: bodyEl.value})});
+  } catch (e) { showError('Could not reach the server.'); return; }
+  if(!r.ok){
+    let msg = 'Error ' + r.status;
+    if(r.status === 422){ msg += ': a title is required (max 300 characters; body max 20000).'; }
+    else { try { msg += ': ' + (await r.json()).detail; } catch (e) {} }
+    showError(msg); return;
+  }
   const d = await r.json();
   out.replaceChildren();
   const h = document.createElement('h2');
@@ -113,10 +135,11 @@ async function run(){
   }
   Object.entries(d.probabilities).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
     const bar = document.createElement('div'); bar.className = 'bar';
-    const fillEl = document.createElement('div');
-    fillEl.style.width = Math.max(v*100, 12) + '%';
-    fillEl.textContent = k + ' ' + Math.round(v*100) + '%';
-    bar.appendChild(fillEl); out.appendChild(bar);
+    const fillEl = document.createElement('div'); fillEl.className = 'fill';
+    fillEl.style.width = (v*100) + '%';
+    const lbl = document.createElement('span'); lbl.className = 'lbl';
+    lbl.textContent = k + ' ' + Math.round(v*100) + '%';
+    bar.appendChild(fillEl); bar.appendChild(lbl); out.appendChild(bar);
   });
 }
 </script></body></html>"""
